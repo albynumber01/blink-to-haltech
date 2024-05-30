@@ -7,9 +7,8 @@ unsigned char rxBuf[8];  // storage for can data
 
 #define CAN0_INT 2  // Set INT to pin 2
 #define CAN1_INT 3
-MCP_CAN CAN0(10);   // set CS pin to 10r
+MCP_CAN CAN0(10);   // set CS pin to 10
 MCP_CAN CAN1(9); 
-
 
 bool button1;
 bool button2;
@@ -29,155 +28,128 @@ byte out2 = 5;
 byte out3 = 6;
 byte out4 = 7;
 
-
-
-unsigned long KAinterval = 150;              // 50ms interval for keep aliv frame
+unsigned long KAinterval = 150;              // 50ms interval for keep alive frame
 unsigned long ButtonInfoInterval = 30;      // 30ms interval for button info frame
 unsigned long KAintervalMillis = 0;         // storage for millis counter
 unsigned long ButtonInfoIntervalMillis = 0; // storage for millis counter
 
-
-
 void setup() {
-  // start serial port an send a message with delay for starting
   Serial.begin(115200);
-  Serial.println("Haltech 3x5 keypad ID B emulator");
+  Serial.println("Haltech 2x4 keypad ID B emulator");
   delay(50);
 
-  // initialize canbus with 1000kbit and 16mhz xtal
-  if (CAN0.begin(MCP_ANY, CAN_1000KBPS, MCP_16MHZ) == CAN_OK)
+  if (CAN0.begin(MCP_ANY, CAN_1000KBPS, MCP_8MHZ) == CAN_OK)
     Serial.println("MCP2515 CAN0 Initialized Successfully!");
   else Serial.println("Error Initializing MCP2515 CAN0...");
 
-    // initialize canbus with 1000kbit and 16mhz xtal
-  if (CAN1.begin(MCP_ANY, CAN_500KBPS, MCP_16MHZ) == CAN_OK)
+  if (CAN1.begin(MCP_ANY, CAN_1000KBPS, MCP_8MHZ) == CAN_OK)
     Serial.println("MCP2515 CAN1 Initialized Successfully!");
   else Serial.println("Error Initializing MCP2515 CAN1...");
 
-  // Set operation mode to normal so the MCP2515 sends acks to received data.
   CAN0.setMode(MCP_NORMAL);
   CAN1.setMode(MCP_NORMAL);
 
-  pinMode(CAN0_INT, INPUT);      // set INT pin to be an input
-  digitalWrite(CAN0_INT, HIGH);  // set INT pin high to enable interna pullup
+  pinMode(CAN0_INT, INPUT);
+  digitalWrite(CAN0_INT, HIGH);
 
-  pinMode(CAN1_INT, INPUT);      // set INT pin to be an input
-  digitalWrite(CAN1_INT, HIGH);  // set INT pin high to enable interna pullup
+  pinMode(CAN1_INT, INPUT);
+  digitalWrite(CAN1_INT, HIGH);
 
   pinMode(4, INPUT);
   digitalWrite(4, HIGH);
 
   KPstart();
 
-
-  Serial.println("All OK");  // all ready to go !
+  Serial.println("All OK");
 }
-
 
 void KPstart() {
+  byte KeepAliveblink[2] = { 0x01, 0x15 };
+  byte Button1Red[8] = { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }; 
+  byte IndicatorLEDBrightness[8] = { 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }; 
+  byte BacklightBrightness[8] = { 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }; 
+  byte Backlightcolor[8] = { 0x2F, 0x03, 0x20, 0x04, 0x07, 0x00, 0x00, 0x00 };
 
-  byte KeepAliveblink[2];
-  KeepAliveblink[0] = { 0x01 };   
-  KeepAliveblink[1] = { 0x15 };                          // frame data is 0X05 for byte 0
-  CAN1.sendMsgBuf(0x00, 0, 2, KeepAliveblink);            // send the frame at 70D 
+  CAN1.sendMsgBuf(0x00, 0, 2, KeepAliveblink);
+  delay(100);
+  CAN1.sendMsgBuf(0x215, 0, 8, Button1Red);
+  delay(100);
+  CAN1.sendMsgBuf(0x415, 0, 8, IndicatorLEDBrightness);
+  delay(100);
+  CAN1.sendMsgBuf(0x515, 0, 8, BacklightBrightness);
+  delay(100);
+  CAN1.sendMsgBuf(0x615, 0, 8, Backlightcolor);
 }
 
+
 void loop() {
+  unsigned long currentMillis = millis();
 
-  unsigned long currentMillis = millis();  // Get current time in milliseconds
-
-  // Execute keepalive frame every 50 ms
   if (currentMillis - KAintervalMillis >= KAinterval) {
     KAintervalMillis = currentMillis;
     SendKeepAlive();
   }
 
-  // Execute buttoninfo frame every 30 ms
   if (currentMillis - ButtonInfoIntervalMillis >= ButtonInfoInterval) {
     ButtonInfoIntervalMillis = currentMillis;
     SendButtonInfo();
   }
 
-  // read can buffer when interrupted and jump to canread for processing.
-  if (!digitalRead(CAN0_INT))  // If CAN0_INT pin is low, read receive buffer
-  {
-    CAN0.readMsgBuf(&rxId, &len, rxBuf);  // Read data: len = data length, buf = data byte(s)
-    canRead(); // execute canRead function to negotiate with ecu
+  if (!digitalRead(CAN0_INT)) {
+    CAN0.readMsgBuf(&rxId, &len, rxBuf);
+    canRead();
   }
-    // read can buffer when interrupted and jump to canread for processing.
-  if (!digitalRead(CAN1_INT))  // If CAN0_INT pin is low, read receive buffer
-  {
-    CAN1.readMsgBuf(&rxId, &len, rxBuf);  // Read data: len = data length, buf = data byte(s)
-    canRead1();
 
+  if (!digitalRead(CAN1_INT)) {
+    CAN1.readMsgBuf(&rxId, &len, rxBuf);
+    canRead1();
   }
 }
-
 
 void canRead1() {
-  if (rxId == 0x715 )
-  {KPstart();}
-
-
-
-  if (rxId == 0x195) 
-    {
-        button1  = bitRead(rxBuf[0], 0);
-        button2  = bitRead(rxBuf[0], 1);
-        button3  = bitRead(rxBuf[0], 2);
-        button4  = bitRead(rxBuf[0], 3);
-        button5  = bitRead(rxBuf[0], 4);
-        button6  = bitRead(rxBuf[0], 5);
-        button7  = bitRead(rxBuf[0], 6);
-        button8  = bitRead(rxBuf[0], 7);
-        button9  = bitRead(rxBuf[1], 0);
-        button10 = bitRead(rxBuf[1], 1);
-        button11 = bitRead(rxBuf[1], 2);
-        button12 = bitRead(rxBuf[1], 3);
-
-       digitalWrite(out1, button6);
-       digitalWrite(out2, button10);
-       digitalWrite(out3, button11);
-       digitalWrite(out4, button12);
-
-        byte ledstate[8];
-
-        
-        // bitWrite(ledstate[1], 4, !button1);
-        // bitWrite(ledstate[1], 5, !button2);
-        // bitWrite(ledstate[1], 6, !button3);
-        // bitWrite(ledstate[1], 7, !button4);
-
-
-        // bitWrite(ledstate[2], 0, !button5);
-        // bitWrite(ledstate[2], 1, !button6);
-        // bitWrite(ledstate[2], 2, !button7);
-        // bitWrite(ledstate[2], 3, !button8);
-        // bitWrite(ledstate[2], 4, !button9);
-        // bitWrite(ledstate[2], 5, !button10);
-        // bitWrite(ledstate[2], 6, !button11);
-        // bitWrite(ledstate[2], 7, !button12);
-
-        ledstate[0] = 0;
-        ledstate[1] = 0;
-        ledstate[2] = 0;
-        ledstate[3] = 0;
-        ledstate[4] = 0;
-        ledstate[5] = 0;
-        ledstate[6] = 0;
-        ledstate[7] = 0;
-
-
-
-
-        CAN1.sendMsgBuf(0x215, 0, 8, ledstate);
-
-
+  if (rxId == 0x715) {
+    Serial.print("Received message on CAN1 with ID: ");
+    Serial.print(rxId, HEX);
+    Serial.print(", Data: ");
+    for (int i = 0; i < len; i++) {
+      Serial.print(rxBuf[i], HEX);
+      Serial.print(" ");
     }
+    Serial.println();
+    KPstart();
+  }
 
+  if (rxId == 0x195) {
+    button1 = bitRead(rxBuf[0], 0);
+    button2 = bitRead(rxBuf[0], 1);
+    button3 = bitRead(rxBuf[0], 2);
+    button4 = bitRead(rxBuf[0], 3);
+    button5 = bitRead(rxBuf[0], 4);
+    button6 = bitRead(rxBuf[0], 5);
+    button7 = bitRead(rxBuf[0], 6);
+    button8 = bitRead(rxBuf[0], 7);
+    button9 = bitRead(rxBuf[1], 0);
+    button10 = bitRead(rxBuf[1], 1);
+    button11 = bitRead(rxBuf[1], 2);
+    button12 = bitRead(rxBuf[1], 3);
+
+    digitalWrite(out1, button6);
+    digitalWrite(out2, button10);
+    digitalWrite(out3, button11);
+    digitalWrite(out4, button12);
+
+    byte ledstate[8];
+
+    Serial.print("Sent ButtonInfo message on CAN1 with ID: ");
+    Serial.print(0x215, HEX);
+    Serial.print(", Data: ");
+    for (int i = 0; i < 8; i++) {
+      Serial.print(ledstate[i], HEX);
+      Serial.print(" ");
+    }
+    Serial.println();
+  }
 }
-
-
 
 void canRead() {
   // CAN Input from Haltech Keypad
@@ -268,12 +240,9 @@ void SendButtonInfo() {
   bitWrite(ButtonInfo[0], 6, button7);                      // byte 0, bit 0, button 7
   bitWrite(ButtonInfo[0], 7, button8);                      // byte 0, bit 0, button 8
 
-
-
   ButtonInfo[1] = 0;                                  // byte 2 filled with 0
   CAN0.sendMsgBuf(0x18B, 0, 2, ButtonInfo);           // send the 2 byte data buffer at adres 18D
 }
-
 
 void SendKeepAlive() {                                // send keep alive frame
   byte KeepAlive[1] = { 5 };                          // frame data is 0X05 for byte 0
